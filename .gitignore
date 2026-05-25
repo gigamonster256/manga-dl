@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+gallery-dl/
+result
+.direnv/
+result-*
+.envrc
+.devenv/
+.vscode/
+*.epub
