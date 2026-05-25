@@ -4,12 +4,33 @@ from ebooklib import epub
 from PIL import Image
 
 
-def _webp_to_jpeg_bytes(path: Path) -> bytes:
-    with Image.open(path) as img:
-        img = img.convert("RGB")
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=85)
+def _stitch_group(paths: list[Path]) -> bytes:
+    """Vertically stitch multiple images into one JPEG."""
+    images = [Image.open(p).convert("RGB") for p in paths]
+    total_h = sum(im.height for im in images)
+    max_w = max(im.width for im in images)
+    canvas = Image.new("RGB", (max_w, total_h))
+    y = 0
+    for im in images:
+        canvas.paste(im, (0, y))
+        y += im.height
+    buf = io.BytesIO()
+    canvas.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
+
+
+def _group_images(paths: list[Path]) -> list[list[Path]]:
+    """Group images into pages: tall images (>=500px) start a new page,
+    short images (<500px) are stitched to the previous page."""
+    groups: list[list[Path]] = []
+    for p in paths:
+        with Image.open(p) as im:
+            h = im.height
+        if h >= 500 or not groups:
+            groups.append([p])
+        else:
+            groups[-1].append(p)
+    return groups
 
 
 def chapter_to_epub(
@@ -20,6 +41,8 @@ def chapter_to_epub(
     images = sorted(image_dir.rglob("*.webp"))
     if not images:
         raise RuntimeError(f"no webp files in {image_dir}")
+
+    groups = _group_images(images)
 
     chapter_num = metadata.get("chapter", 0)
     chapter_minor = metadata.get("chapter_minor", "")
@@ -46,22 +69,19 @@ def chapter_to_epub(
         None, "meta", "", {"name": "calibre:series_index", "content": str(series_index)}
     )
 
-    cover_data = _webp_to_jpeg_bytes(images[0])
+    cover_data = _stitch_group(groups[0])
     book.set_cover("cover.jpg", cover_data)
 
-    num_pages = len(images)
     spine: list = ["cover"]
-    for i, img_path in enumerate(images):
-        uid = f"page_{i:04d}"
-        img_file = f"images/page_{i + 1:04d}.jpg"
+    for gi, group in enumerate(groups):
+        page_num = gi + 1
+        page_file = f"page_{page_num:04d}.xhtml"
+        img_file = f"images/page_{page_num:04d}.jpg"
+        img_label = label if page_num == 1 and len(groups) == 1 else f"Page {page_num}"
 
-        if i == 0:
-            img_data = cover_data
-        else:
-            img_data = _webp_to_jpeg_bytes(img_path)
-
+        img_data = _stitch_group(group)
         img_item = epub.EpubItem(
-            uid=f"img_{i:04d}",
+            uid=f"img_{gi:04d}",
             file_name=img_file,
             media_type="image/jpeg",
             content=img_data,
@@ -69,16 +89,16 @@ def chapter_to_epub(
         book.add_item(img_item)
 
         page = epub.EpubHtml(
-            title=f"Page {i + 1}" if i > 0 or num_pages > 1 else label,
-            file_name=f"page_{i + 1:04d}.xhtml",
+            title=img_label,
+            file_name=page_file,
             lang="en",
         )
         page.content = (
-            '<div style="text-align:center; '
-            'display:flex; align-items:center; justify-content:center; '
-            'height:100vh; margin:0; padding:0;">'
-            f'<img src="{img_file}" alt="Page {i + 1}" '
-            'style="max-width:100%; max-height:100%; object-fit:contain;" />'
+            '<div style="margin:0; padding:0; '
+            'text-align:center;">'
+            f'<img src="{img_file}" alt="{img_label}" '
+            'style="max-width:100%; max-height:100vh; '
+            'width:auto; height:auto; display:block; margin:0 auto;" />'
             "</div>"
         )
         book.add_item(page)
