@@ -49,33 +49,43 @@ def chapter_to_epub(
     cover_data = _webp_to_jpeg_bytes(images[0])
     book.set_cover("cover.jpg", cover_data)
 
-    body_parts = []
+    num_pages = len(images)
+    spine: list = ["cover"]
     for i, img_path in enumerate(images):
-        img_data = _webp_to_jpeg_bytes(img_path)
+        uid = f"page_{i:04d}"
+        img_file = f"images/page_{i + 1:04d}.jpg"
+
+        if i == 0:
+            img_data = cover_data
+        else:
+            img_data = _webp_to_jpeg_bytes(img_path)
+
         img_item = epub.EpubItem(
             uid=f"img_{i:04d}",
-            file_name=f"images/page_{i + 1:04d}.jpg",
+            file_name=img_file,
             media_type="image/jpeg",
             content=img_data,
         )
         book.add_item(img_item)
-        body_parts.append(
-            f'<div style="text-align:center; page-break-after:always;">'
-            f'<img src="images/page_{i + 1:04d}.jpg" alt="Page {i + 1}" '
-            f'style="max-width:100%; height:auto; display:block; margin:0 auto;" />'
-            f"</div>"
+
+        page = epub.EpubHtml(
+            title=f"Page {i + 1}" if i > 0 or num_pages > 1 else label,
+            file_name=f"page_{i + 1:04d}.xhtml",
+            lang="en",
         )
+        page.content = (
+            '<div style="text-align:center; '
+            'display:flex; align-items:center; justify-content:center; '
+            'height:100vh; margin:0; padding:0;">'
+            f'<img src="{img_file}" alt="Page {i + 1}" '
+            'style="max-width:100%; max-height:100%; object-fit:contain;" />'
+            "</div>"
+        )
+        book.add_item(page)
+        spine.append(page)
 
-    chapter = epub.EpubHtml(
-        title=label,
-        file_name="chapter.xhtml",
-        lang="en",
-    )
-    chapter.content = "\n".join(body_parts)
-    book.add_item(chapter)
-
-    book.toc.append(chapter)
-    book.spine = ["cover", chapter]
+    book.spine = spine
+    book.toc = [spine[1]] if len(spine) > 1 else []
 
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())

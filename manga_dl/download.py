@@ -43,6 +43,26 @@ def get_chapter_info(url: str) -> tuple[dict, list[dict]]:
             metadata = msg[1]
         elif msg[0] == 3:
             pages.append(msg[2])
+
+    if "manga" not in metadata:
+        return metadata, pages
+
+    # gallery-dl truncates manga titles at HTML entities in chapter-level
+    # metadata (e.g. "&#039;" becomes truncated). Use the series-level dump
+    # to get the correct title instead.
+    parent = "/".join(url.rstrip("/").rsplit("/", 1)[:-1])
+    if parent:
+        try:
+            series = _gallery_dl("--dump-json", parent)
+            for msg in _parse_json_output(series.stdout):
+                if isinstance(msg, list) and len(msg) > 2 and msg[0] == 6:
+                    series_meta = msg[2]
+                    if "manga" in series_meta:
+                        metadata["manga"] = series_meta["manga"]
+                        break
+        except RuntimeError:
+            pass
+
     return metadata, pages
 
 
