@@ -1,4 +1,11 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "manga-dl"
 version = "0.1.0"
 requires-python = ">=3.13"
+
+[project.scripts]
+manga-dl = "manga_dl:main"

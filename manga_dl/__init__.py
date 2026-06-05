@@ -142,3 +142,6 @@ def main() -> None:
         return
 
     cmd_download(args.url, output_dir)
+
+if __name__ == "__main__":
+    main()
